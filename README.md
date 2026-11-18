@@ -97,6 +97,38 @@ anomaly detector は2本です（[`dynatrace/`](dynatrace/)）。どちらも 5 
 - **キュー件数はログに出ない。** ログに出るのは1通ごとの配送結果です。今の件数は `postqueue` などで別に取る必要があります。このラボではログとして送りましたが、OneAgent のローカル metric API でメトリクスとして直接送る方法もあります（このラボの VM ではそのポートが開いていなかったため使いませんでした）。ログ経由なら、ホストに API トークンを置かずに済みます。
 - **しきい値は平常時を見て決める。** 上のしきい値はラボ用です。平常時の deferred 件数と滞留時間を見てから決めます。
 
+## アクセス制御とマスキング
+
+マスクしていても、配送ログには宛先や相手の応答文が残ります。見せる範囲は次の組み合わせで絞れます（[Grail の権限](https://docs.dynatrace.com/docs/platform/grail/data-model/assign-permissions-in-grail)、[データの分割](https://docs.dynatrace.com/docs/platform/grail/organize-data/partition-data)）。
+
+| 方法 | 内容 | 注意 |
+|---|---|---|
+| ① 保存しない | アドレスのローカル部だけをマスクし、ドメインは残す。パースした宛先項目は保存しない | 一番簡単。下で検証 |
+| ② バケット分割 | 専用バケットに入れ、`ALLOW storage:logs:read WHERE storage:bucket-name="mail_logs"` | 保持期間をバケットごとに決められる（1日〜10年）。ドキュメントはバケットをアクセス制御の主な手段にすることを推奨していない |
+| ③ レコード単位 | `dt.security_context` を付け、IAM の条件で絞る | ドキュメントが推奨する方法 |
+| ④ 項目単位 | カスタム fieldset で項目を隠す | `content` に値が残っていれば意味がないので①が前提 |
+
+メトリクス（`log.postfix.*`）にはアドレスが入らないので、「多くの人はメトリクスとアラート、生ログはメール担当だけ」と分けられます。
+
+**①の検証**: このラボの環境では、既定のメールマスキングがアドレス全体を `<Masked_email>` に置き換えるため、宛先ドメインが取れませんでした。そこで、ホストのスコープに `log.source = /var/log/mail.log` 限定のルール（[`dynatrace/log-masking-localpart-only.json`](dynatrace/log-masking-localpart-only.json)）を追加しました。正規表現のキャプチャグループ（ローカル部）だけが `<masked>` に置き換わります。
+
+- 作成から約25秒後の行から `to=<<masked>@contoso.example>` の形になった
+- 同じホストの syslog と journald の行は、従来どおりアドレス全体がマスクされたまま
+- パイプラインで `postfix.to_domain` を取り出し、`log.postfix.delivery` の次元に加えた
+
+syslog（ActiveGate）や API 経由で取り込む場合は、OpenPipeline 側でのマスクも検討してください。
+
+## 量と上限
+
+[ログの上限](https://docs.dynatrace.com/docs/analyze-explore-automate/logs/lma-limits)と [OpenPipeline の上限](https://docs.dynatrace.com/docs/platform/openpipeline/reference/limits)から、このユースケースに効くものを抜き出しました。
+
+- postfix のログは1通あたりおよそ5〜6行で、OneAgent の上限（ホストあたり新規ログ 200 MB/分、レコード 10 MB）にはまず届きません。効くのは取り込みと保持のコストです
+- OneAgent のログが使えるようになるまで数秒〜90秒（平均30秒）。このラボでは障害開始から Problem まで約8分でした
+- 初めて読むファイルは直近15分（タイムスタンプが読めなければ 10 MiB）だけ取り込みます
+- ログは24時間（1.348以降に作った環境は72時間）より古いと受け付けられません。ログから作るメトリクスは2時間より古いデータ点が捨てられます
+- ログメトリクスは1パイプラインあたり1,000本。宛先ドメインのような次元は系列数が増えるので、上位に絞るか relay 単位にとどめます
+- `default_logs` の保持は35日です
+
 ## ログの取り込み方法（Dynatrace SaaS）
 
 [ログ取り込みのドキュメント](https://docs.dynatrace.com/docs/analyze-explore-automate/logs/lma-log-ingestion)の選択肢のうち、postfix サーバーに関係するものです。
@@ -117,6 +149,7 @@ anomaly detector は2本です（[`dynatrace/`](dynatrace/)）。どちらも 5 
    - カスタムログソース（`builtin:logmonitoring.custom-log-source-settings`、HOST スコープ）
    - ログのパイプライン（`builtin:openpipeline.logs.pipelines`）と、ルーティングの先頭への1行追加（`builtin:openpipeline.logs.routing`）
    - anomaly detector 2本（`builtin:davis.anomaly-detectors`）
+   - （任意）ローカル部だけをマスクするルール（`builtin:logmonitoring.sensitive-data-masking-settings`、HOST スコープ）
 4. 障害を起こす: `echo busy | sudo tee /etc/fakesmtp/exo.mode`。戻す: `echo ok | sudo tee /etc/fakesmtp/exo.mode`
 
 ## 調査に使った DQL

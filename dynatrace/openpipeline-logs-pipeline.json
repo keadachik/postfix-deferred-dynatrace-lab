@@ -10,7 +10,7 @@
     "description": "Parse postfix delivery lines (to/relay/delay/dsn/status)",
     "matcher": "log.type == \"postfix\" and matchesPhrase(content, \"status=\")",
     "dql": {
-     "script": "fieldsAdd _l = if(contains(content, \"]: \"), substring(content, from: indexOf(content, \"]: \") + 3), else: content)\n| parse _l, \"ALNUM:postfix.queue_id ': to=<'\"\n| parse content, \"LD ' relay=' LD:postfix.relay ','\"\n| parse content, \"LD ' delay=' DOUBLE:postfix.delay ','\"\n| parse content, \"LD ' dsn=' LD:postfix.dsn ','\"\n| parse content, \"LD ' status=' WORD:postfix.status SPACE? '(' DATA:postfix.reason\"\n| fieldsAdd postfix.relay_host = if(contains(postfix.relay, \"[\"), substring(postfix.relay, to: indexOf(postfix.relay, \"[\")), else: postfix.relay),\n            postfix.dsn_class = substring(postfix.dsn, to: 1),\n            postfix.reason = if(endsWith(postfix.reason, \")\"), substring(postfix.reason, to: stringLength(postfix.reason) - 1), else: postfix.reason)\n| fieldsAdd loglevel = if(postfix.status == \"deferred\", \"WARN\", else: if(postfix.status == \"bounced\", \"ERROR\", else: loglevel))\n| fieldsRemove _l, postfix.relay"
+     "script": "fieldsAdd _l = if(contains(content, \"]: \"), substring(content, from: indexOf(content, \"]: \") + 3), else: content)\n| parse _l, \"ALNUM:postfix.queue_id ': to=<'\"\n| parse content, \"LD ' relay=' LD:postfix.relay ','\"\n| parse content, \"LD ' delay=' DOUBLE:postfix.delay ','\"\n| parse content, \"LD ' dsn=' LD:postfix.dsn ','\"\n| parse content, \"LD ' status=' WORD:postfix.status SPACE? '(' DATA:postfix.reason\"\n| fieldsAdd postfix.relay_host = if(contains(postfix.relay, \"[\"), substring(postfix.relay, to: indexOf(postfix.relay, \"[\")), else: postfix.relay),\n            postfix.dsn_class = substring(postfix.dsn, to: 1),\n            postfix.reason = if(endsWith(postfix.reason, \")\"), substring(postfix.reason, to: stringLength(postfix.reason) - 1), else: postfix.reason)\n| fieldsAdd loglevel = if(postfix.status == \"deferred\", \"WARN\", else: if(postfix.status == \"bounced\", \"ERROR\", else: loglevel))\n| parse content, \"LD ' to=<' LD '@' LD:postfix.to_domain '>,'\"\n| fieldsRemove _l, postfix.relay, postfix.to"
     },
     "sampleData": "{\"content\": \"2026-11-18T13:15:33.372558+09:00 mx01 postfix/smtp[2764]: 552AA5871: to=<a@contoso.example>, relay=contoso-example.mail.protection.outlook.com[52.101.1.1]:25, delay=301, delays=0.01/0/300/0, dsn=4.7.500, status=deferred (host contoso-example.mail.protection.outlook.com[52.101.1.1] said: 451 4.7.500 Server busy. Please try again later. (in reply to RCPT TO command))\", \"log.type\": \"postfix\"}"
    },
@@ -40,6 +40,10 @@
       {
        "extractionType": "field",
        "sourceFieldName": "postfix.status"
+      },
+      {
+       "extractionType": "field",
+       "sourceFieldName": "postfix.to_domain"
       },
       {
        "extractionType": "field",

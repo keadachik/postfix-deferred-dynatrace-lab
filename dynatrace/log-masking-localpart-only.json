@@ -1,0 +1,4 @@
+{"enabled": true, "config-item-title": "postfix lab: mask email local-part only (keep domain)",
+ "masking": {"type": "STRING", "replacement": "<masked>",
+   "expression": "([a-zA-Z0-9_.+-]+)@[a-zA-Z0-9-]+(?:\\.[a-zA-Z0-9-]+)+"},
+ "matchers": [{"attribute": "log.source", "operator": "MATCHES", "values": ["/var/log/mail.log"]}]}
