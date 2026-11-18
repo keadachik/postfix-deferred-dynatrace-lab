@@ -1,0 +1,169 @@
+{
+ "customId": "postfix-mail",
+ "displayName": "Postfix (mail delivery + queue)",
+ "processing": {
+  "processors": [
+   {
+    "id": "postfix-delivery-parse",
+    "type": "dql",
+    "enabled": true,
+    "description": "Parse postfix delivery lines (to/relay/delay/dsn/status)",
+    "matcher": "log.type == \"postfix\" and matchesPhrase(content, \"status=\")",
+    "dql": {
+     "script": "fieldsAdd _l = if(contains(content, \"]: \"), substring(content, from: indexOf(content, \"]: \") + 3), else: content)\n| parse _l, \"ALNUM:postfix.queue_id ': to=<'\"\n| parse content, \"LD ' relay=' LD:postfix.relay ','\"\n| parse content, \"LD ' delay=' DOUBLE:postfix.delay ','\"\n| parse content, \"LD ' dsn=' LD:postfix.dsn ','\"\n| parse content, \"LD ' status=' WORD:postfix.status SPACE? '(' DATA:postfix.reason\"\n| fieldsAdd postfix.relay_host = if(contains(postfix.relay, \"[\"), substring(postfix.relay, to: indexOf(postfix.relay, \"[\")), else: postfix.relay),\n            postfix.dsn_class = substring(postfix.dsn, to: 1),\n            postfix.reason = if(endsWith(postfix.reason, \")\"), substring(postfix.reason, to: stringLength(postfix.reason) - 1), else: postfix.reason)\n| fieldsAdd loglevel = if(postfix.status == \"deferred\", \"WARN\", else: if(postfix.status == \"bounced\", \"ERROR\", else: loglevel))\n| fieldsRemove _l, postfix.relay"
+    },
+    "sampleData": "{\"content\": \"2026-11-18T13:15:33.372558+09:00 mx01 postfix/smtp[2764]: 552AA5871: to=<a@contoso.example>, relay=contoso-example.mail.protection.outlook.com[52.101.1.1]:25, delay=301, delays=0.01/0/300/0, dsn=4.7.500, status=deferred (host contoso-example.mail.protection.outlook.com[52.101.1.1] said: 451 4.7.500 Server busy. Please try again later. (in reply to RCPT TO command))\", \"log.type\": \"postfix\"}"
+   },
+   {
+    "id": "postfix-queue-parse",
+    "type": "dql",
+    "enabled": true,
+    "description": "Parse postqueue snapshot JSON",
+    "matcher": "log.type == \"postfix_queue\"",
+    "dql": {
+     "script": "parse content, \"JSON:j\"\n| fieldsAdd postfix.event = toString(j[event]), postfix.queue = toString(j[queue]),\n            postfix.queue.messages = toLong(j[messages]), postfix.queue.oldest_age_s = toLong(j[oldest_age_s]),\n            postfix.dest_domain = toString(j[dest_domain])\n| fieldsRemove j"
+    }
+   }
+  ]
+ },
+ "metricExtraction": {
+  "processors": [
+   {
+    "id": "postfix-delivery-count",
+    "type": "counterMetric",
+    "enabled": true,
+    "description": "delivery attempts by status/relay/dsn class",
+    "matcher": "isNotNull(postfix.status)",
+    "counterMetric": {
+     "metricKey": "log.postfix.delivery",
+     "dimensions": [
+      {
+       "extractionType": "field",
+       "sourceFieldName": "postfix.status"
+      },
+      {
+       "extractionType": "field",
+       "sourceFieldName": "postfix.relay_host"
+      },
+      {
+       "extractionType": "field",
+       "sourceFieldName": "postfix.dsn_class"
+      },
+      {
+       "extractionType": "field",
+       "sourceFieldName": "host.name"
+      },
+      {
+       "extractionType": "field",
+       "sourceFieldName": "dt.entity.host"
+      }
+     ]
+    }
+   },
+   {
+    "id": "postfix-delivery-delay",
+    "type": "valueMetric",
+    "enabled": true,
+    "description": "total delay (s) per delivery attempt",
+    "matcher": "isNotNull(postfix.delay)",
+    "valueMetric": {
+     "metricKey": "log.postfix.delivery.delay",
+     "field": "postfix.delay",
+     "dimensions": [
+      {
+       "extractionType": "field",
+       "sourceFieldName": "postfix.status"
+      },
+      {
+       "extractionType": "field",
+       "sourceFieldName": "postfix.relay_host"
+      },
+      {
+       "extractionType": "field",
+       "sourceFieldName": "host.name"
+      },
+      {
+       "extractionType": "field",
+       "sourceFieldName": "dt.entity.host"
+      }
+     ]
+    }
+   },
+   {
+    "id": "postfix-queue-messages",
+    "type": "valueMetric",
+    "enabled": true,
+    "description": "queue depth by queue",
+    "matcher": "postfix.event == \"postfix_queue_snapshot\"",
+    "valueMetric": {
+     "metricKey": "log.postfix.queue.messages",
+     "field": "postfix.queue.messages",
+     "dimensions": [
+      {
+       "extractionType": "field",
+       "sourceFieldName": "postfix.queue"
+      },
+      {
+       "extractionType": "field",
+       "sourceFieldName": "host.name"
+      },
+      {
+       "extractionType": "field",
+       "sourceFieldName": "dt.entity.host"
+      }
+     ]
+    }
+   },
+   {
+    "id": "postfix-queue-oldest",
+    "type": "valueMetric",
+    "enabled": true,
+    "description": "age of oldest message (s) by queue",
+    "matcher": "postfix.event == \"postfix_queue_snapshot\"",
+    "valueMetric": {
+     "metricKey": "log.postfix.queue.oldest_age_s",
+     "field": "postfix.queue.oldest_age_s",
+     "dimensions": [
+      {
+       "extractionType": "field",
+       "sourceFieldName": "postfix.queue"
+      },
+      {
+       "extractionType": "field",
+       "sourceFieldName": "host.name"
+      },
+      {
+       "extractionType": "field",
+       "sourceFieldName": "dt.entity.host"
+      }
+     ]
+    }
+   },
+   {
+    "id": "postfix-queue-by-domain",
+    "type": "valueMetric",
+    "enabled": true,
+    "description": "deferred messages by destination domain",
+    "matcher": "postfix.event == \"postfix_queue_by_domain\"",
+    "valueMetric": {
+     "metricKey": "log.postfix.queue.deferred_by_domain",
+     "field": "postfix.queue.messages",
+     "dimensions": [
+      {
+       "extractionType": "field",
+       "sourceFieldName": "postfix.dest_domain"
+      },
+      {
+       "extractionType": "field",
+       "sourceFieldName": "host.name"
+      },
+      {
+       "extractionType": "field",
+       "sourceFieldName": "dt.entity.host"
+      }
+     ]
+    }
+   }
+  ]
+ }
+}

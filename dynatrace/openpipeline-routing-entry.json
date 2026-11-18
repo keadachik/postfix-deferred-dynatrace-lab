@@ -1,0 +1,7 @@
+{
+  "description": "postfix lab (mail.log + queue snapshot)",
+  "enabled": true,
+  "matcher": "log.type == \"postfix\" or log.type == \"postfix_queue\"",
+  "pipelineType": "custom",
+  "pipelineId": "<objectId of the postfix-mail pipeline>"
+}

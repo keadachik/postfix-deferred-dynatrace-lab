@@ -1,0 +1,31 @@
+{
+  "enabled": true,
+  "config-item-title": "postfix mail.log + queue snapshot (lab)",
+  "context": [],
+  "custom-log-source": {
+    "type": "LOG_PATH_PATTERN",
+    "accept-binary": false,
+    "values-and-enrichment": [
+      {
+        "path": "/var/log/mail.log",
+        "enrichment": [
+          {
+            "type": "attribute",
+            "key": "log.type",
+            "value": "postfix"
+          }
+        ]
+      },
+      {
+        "path": "/var/log/postfix-queue.log",
+        "enrichment": [
+          {
+            "type": "attribute",
+            "key": "log.type",
+            "value": "postfix_queue"
+          }
+        ]
+      }
+    ]
+  }
+}

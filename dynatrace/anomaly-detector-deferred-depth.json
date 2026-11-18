@@ -1,0 +1,64 @@
+{
+ "title": "Postfix deferred queue is growing",
+ "description": "Postfix deferred queue on {dims:host.name} is above threshold. Check log.postfix.delivery by relay_host and the deferred reasons (dsn/reason) in logs.",
+ "enabled": true,
+ "source": "postfix-lab",
+ "analyzer": {
+  "name": "dt.statistics.ui.anomaly_detection.StaticThresholdAnomalyDetectionAnalyzer",
+  "input": [
+   {
+    "key": "query.expression",
+    "value": "timeseries deferred = max(log.postfix.queue.messages), interval:1m, by:{dt.entity.host, host.name}, filter:{postfix.queue == \"deferred\"}"
+   },
+   {
+    "key": "alertOnMissingData",
+    "value": "false"
+   },
+   {
+    "key": "violatingSamples",
+    "value": "3"
+   },
+   {
+    "key": "slidingWindow",
+    "value": "5"
+   },
+   {
+    "key": "dealertingSamples",
+    "value": "5"
+   },
+   {
+    "key": "threshold",
+    "value": "20"
+   },
+   {
+    "key": "alertCondition",
+    "value": "ABOVE"
+   }
+  ]
+ },
+ "eventTemplate": {
+  "properties": [
+   {
+    "key": "event.type",
+    "value": "ERROR_EVENT"
+   },
+   {
+    "key": "event.name",
+    "value": "Postfix deferred queue growing"
+   },
+   {
+    "key": "event.description",
+    "value": "Postfix deferred queue on {dims:host.name} is above threshold. Check log.postfix.delivery by relay_host and the deferred reasons (dsn/reason) in logs."
+   },
+   {
+    "key": "dt.source_entity",
+    "value": "{dims:dt.entity.host}"
+   },
+   {
+    "key": "host.name",
+    "value": "{dims:host.name}"
+   }
+  ]
+ },
+ "executionSettings": {}
+}
